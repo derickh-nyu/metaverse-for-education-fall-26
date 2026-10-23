@@ -11,7 +11,5 @@
 		<key>UISceneConfigurations</key>
 		<dict/>
 	</dict>
-	<key>NSWorldSensingUsageDescription</key>
-	<string>Machine Guide uses world sensing to keep labels attached to the machine.</string>
 </dict>
 </plist>
