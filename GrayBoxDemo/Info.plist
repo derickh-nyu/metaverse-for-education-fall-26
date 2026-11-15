@@ -11,5 +11,7 @@
 		<key>UISceneConfigurations</key>
 		<dict/>
 	</dict>
+	<key>CFBundleIdentifier</key>
+	<string></string>
 </dict>
 </plist>

@@ -12,4 +12,7 @@ class AppModel {
         case open
     }
     var immersiveSpaceState = ImmersiveSpaceState.closed
+
+    /// ARKit object tracking for the real machine.
+    let tracker = ObjectTracker()
 }

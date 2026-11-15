@@ -1,92 +1,64 @@
 import SwiftUI
-import RealityKit
-import ARKit
 
+/// Control window. Object tracking itself runs in the ImmersiveSpace (see ImmersiveView),
+/// because ARKit object tracking does not work inside a regular window.
 struct ContentView: View {
-    @State private var session = ARKitSession()
-    
-    // Store root entity and spawned child entities keyed by anchor ID
-    @State private var rootEntity = Entity()
-    @State private var trackedEntities: [UUID: Entity] = [:]
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.openImmersiveSpace) private var openImmersiveSpace
+    @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
 
     var body: some View {
-        RealityView { content in
-            content.add(rootEntity)
+        @Bindable var tracker = appModel.tracker
+
+        VStack(spacing: 24) {
+            Text("Machine Guide")
+                .font(.extraLargeTitle)
+
+            Text("Look at the machine. Labels, arrows and warnings snap onto it.")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Label(tracker.status.message, systemImage: tracker.status.icon)
+                .font(.headline)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(.thinMaterial, in: Capsule())
+
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Show 3D model overlay", isOn: $tracker.showModelOverlay)
+            }
+            .frame(maxWidth: 520)
+
+            Button(appModel.immersiveSpaceState == .open ? "Stop Tracking" : "Start Tracking") {
+                Task { await toggleImmersiveSpace() }
+            }
+            .font(.title2)
+            .disabled(appModel.immersiveSpaceState == .inTransition)
         }
-        .task {
-            await startObjectTracking()
-        }
+        .padding(48)
     }
 
-    private func startObjectTracking() async {
-        guard let url = Bundle.main.url(forResource: "MyObjectTracker 1", withExtension: "referenceobject") else {
-            print("Error: Could not locate 'MyObjectTracker 1.referenceobject' in the main bundle.")
-            return
-        }
-
-        do {
-            let referenceObject = try await ReferenceObject(from: url)
-            let provider = ObjectTrackingProvider(referenceObjects: [referenceObject])
-
-            guard ObjectTrackingProvider.isSupported else {
-                print("ObjectTrackingProvider is not supported on this platform/simulator.")
-                return
+    private func toggleImmersiveSpace() async {
+        switch appModel.immersiveSpaceState {
+        case .open:
+            appModel.immersiveSpaceState = .inTransition
+            await dismissImmersiveSpace()
+        case .closed:
+            appModel.immersiveSpaceState = .inTransition
+            switch await openImmersiveSpace(id: appModel.immersiveSpaceID) {
+            case .opened:
+                break
+            default:
+                appModel.immersiveSpaceState = .closed
             }
-
-            try await session.run([provider])
-            print("Tracking session started for: \(referenceObject.name)")
-
-            for await update in provider.anchorUpdates {
-                let anchor = update.anchor
-
-                switch update.event {
-                case .added:
-                    print("Found anchor at: \(anchor.originFromAnchorTransform)")
-                    
-                    // Create an anchor parent entity positioned at the detected physical object
-                    let anchorEntity = Entity()
-                    anchorEntity.transform = Transform(matrix: anchor.originFromAnchorTransform)
-
-                    // Load your 3D model (replace "YourModelName" with your .usdz file name without extension)
-                    if let modelEntity = try? await Entity(named: "YourModelName") {
-                        // --- SET SCALE ---
-                        // [1, 1, 1] is native size. Use [0.1, 0.1, 0.1] if the model is too large.
-                        modelEntity.scale = SIMD3<Float>(1.0, 1.0, 1.0)
-
-                        // --- SET POSITION ---
-                        // Position is relative to the anchor origin (in meters: [X, Y, Z]).
-                        // [0, 0.05, 0] sits 5cm directly on top of the detected object center.
-                        modelEntity.position = SIMD3<Float>(0.0, 0.05, 0.0)
-
-                        anchorEntity.addChild(modelEntity)
-                    } else {
-                        // Fallback: visual debug cube if the 3D model asset fails to load
-                        let debugBox = ModelEntity(
-                            mesh: .generateBox(size: 0.05),
-                            materials: [SimpleMaterial(color: .systemGreen, isMetallic: false)]
-                        )
-                        debugBox.position = SIMD3<Float>(0.0, 0.025, 0.0)
-                        anchorEntity.addChild(debugBox)
-                    }
-
-                    rootEntity.addChild(anchorEntity)
-                    trackedEntities[anchor.id] = anchorEntity
-
-                case .updated:
-                    // Keep the entity anchored to the object as the user moves
-                    if let entity = trackedEntities[anchor.id] {
-                        entity.transform = Transform(matrix: anchor.originFromAnchorTransform)
-                    }
-
-                case .removed:
-                    print("Lost anchor tracking.")
-                    if let entity = trackedEntities.removeValue(forKey: anchor.id) {
-                        entity.removeFromParent()
-                    }
-                }
-            }
-        } catch {
-            print("Failed to load reference object or start session: \(error)")
+        case .inTransition:
+            break
         }
     }
+}
+
+#Preview(windowStyle: .automatic) {
+    ContentView()
+        .environment(AppModel())
 }
